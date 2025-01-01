@@ -1,77 +1,95 @@
-import 'dotenv/config'
-import { openai } from './openai.js'
-import math from 'advanced-calculator'
-const QUESTION = process.argv[2] || 'hi'
+import "dotenv/config";
+import { openai } from "./openai.js";
+import math from "advanced-calculator";
+const QUESTION = process.argv[2] || "hi";
 
 const messages = [
   {
-    role: 'user',
+    role: "user",
     content: QUESTION,
   },
-]
+];
 
 const functions = {
   calculate: async ({ expression }) => {
-    return math.evaluate(expression)
+    return math.evaluate(expression);
   },
-}
+  generateImage: async ({ text }) => {
+    const response = await openai.images.generate({ prompt: text });
+    return response.data[0].url;
+  },
+};
 
 const getCompletion = async (messages) => {
   const response = await openai.chat.completions.create({
-    model: 'gpt-4',
+    model: "gpt-4",
     messages,
     functions: [
       {
-        name: 'calculate',
-        description: 'Run a math expression',
+        name: "calculate",
+        description: "Run a math expression",
         parameters: {
-          type: 'object',
+          type: "object",
           properties: {
             expression: {
-              type: 'string',
+              type: "string",
               description:
                 'Then math expression to evaluate like "2 * 3 + (21 / 2) ^ 2"',
             },
           },
-          required: ['expression'],
+          required: ["expression"],
+        },
+      },
+      {
+        name: "generateImage",
+        description: "Generate an image from text",
+        parameters: {
+          type: "object",
+          properties: {
+            text: {
+              type: "string",
+              description: "The text to generate an image from",
+            },
+          },
+          required: ["text"],
         },
       },
     ],
     temperature: 0,
-  })
+  });
 
-  return response
-}
+  return response;
+};
 
-let response
+let response;
 while (true) {
-  response = await getCompletion(messages)
+  response = await getCompletion(messages);
 
-  if (response.choices[0].finish_reason === 'stop') {
-    console.log(response.choices[0].message.content)
-    break
-  } else if (response.choices[0].finish_reason === 'function_call') {
-    const fnName = response.choices[0].message.function_call.name
-    const args = response.choices[0].message.function_call.arguments
+  if (response.choices[0].finish_reason === "stop") {
+    console.log(response.choices[0].message.content);
+    break;
+  } else if (response.choices[0].finish_reason === "function_call") {
+    const fnName = response.choices[0].message.function_call.name;
+    const args = response.choices[0].message.function_call.arguments;
 
-    const functionToCall = functions[fnName]
-    const params = JSON.parse(args)
+    const functionToCall = functions[fnName];
+    const params = JSON.parse(args);
 
-    const result = functionToCall(params)
-
+    const result = await functionToCall(params);
+    
     messages.push({
-      role: 'assistant',
+      role: "assistant",
       content: null,
       function_call: {
         name: fnName,
         arguments: args,
       },
-    })
+    });
 
     messages.push({
-      role: 'function',
+      role: "function",
       name: fnName,
       content: JSON.stringify({ result: result }),
-    })
+    });
   }
 }
